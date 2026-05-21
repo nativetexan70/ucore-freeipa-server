@@ -21,3 +21,10 @@ systemctl enable firewalld.service
 # ipa.service orchestrates all FreeIPA components; it requires ipa-server-install to be
 # run once after first boot to configure the realm before it will successfully start.
 systemctl enable ipa.service
+
+### Clean up repo files
+# Remove file:// gpgkey references so bootc container lint doesn't fail on
+# missing local paths in the final image.
+for f in /etc/yum.repos.d/*.repo /usr/lib/yum.repos.d/*.repo; do
+    [[ -f "$f" ]] && sed -i 's|file://[^ ]*gpgkey[^ ]*||g' "$f"
+done
