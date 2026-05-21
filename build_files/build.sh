@@ -4,21 +4,20 @@ set -ouex pipefail
 
 ### Install packages
 
-# Packages can be installed from any enabled yum repo on the image.
-# RPMfusion repos are available by default in ublue main images
-# List of rpmfusion packages can be found here:
-# https://mirrors.rpmfusion.org/mirrorlist?path=free/fedora/updates/43/x86_64/repoview/index.html&protocol=https&redirect=1
+# FreeIPA server with integrated DNS and optional Active Directory trust
+dnf5 install -y \
+    freeipa-server \
+    freeipa-server-dns \
+    freeipa-server-trust-ad
 
-# this installs a package from fedora repos
-dnf5 install -y tmux 
+### Configure firewall
+# freeipa4 service covers tcp/udp 88 (Kerberos), 389/636 (LDAP/S), 464 (kpasswd), 80/443 (HTTP/S)
+# dns service covers tcp/udp 53
+firewall-offline-cmd --add-service=freeipa4
+firewall-offline-cmd --add-service=dns
 
-# Use a COPR Example:
-#
-# dnf5 -y copr enable ublue-os/staging
-# dnf5 -y install package
-# Disable COPRs so they don't end up enabled on the final image:
-# dnf5 -y copr disable ublue-os/staging
-
-#### Example for enabling a System Unit File
-
-systemctl enable podman.socket
+### Enable services
+systemctl enable firewalld.service
+# ipa.service orchestrates all FreeIPA components; it requires ipa-server-install to be
+# run once after first boot to configure the realm before it will successfully start.
+systemctl enable ipa.service

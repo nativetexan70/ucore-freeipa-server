@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **bootc (bootable container) image** repository for building a custom [Universal Blue](https://universal-blue.org/) OS image, published to GitHub Container Registry (GHCR) and optionally distributed as ISO/QCOW2/RAW disk images. The project name `ucore-freeipa-server` suggests it builds on a uCore base with FreeIPA server capabilities.
+This is a **bootc (bootable container) image** repository that builds a [Universal Blue](https://universal-blue.org/) uCore image with FreeIPA server pre-installed. The image is published to GitHub Container Registry (GHCR) and can be distributed as ISO/QCOW2/RAW disk images. After deploying the image, run `ipa-server-install` once to configure the realm before FreeIPA will start.
 
 ## Common Commands
 
@@ -29,8 +29,8 @@ Default environment variables: `image_name="image-template"`, `default_tag="late
 
 ### Build Pipeline
 
-1. **`Containerfile`** — Defines the container image, using `ghcr.io/ublue-os/bazzite:stable` as the base. This is where packages and system configurations are layered.
-2. **`build_files/build.sh`** — Shell script that runs *inside* the container during build to install packages and configure services. Currently installs `tmux` and enables `podman.socket`.
+1. **`Containerfile`** — Defines the container image, using `ghcr.io/ublue-os/ucore:stable` as the base (Fedora CoreOS-based server image). This is where packages and system configurations are layered.
+2. **`build_files/build.sh`** — Shell script that runs *inside* the container during build. Installs `freeipa-server`, `freeipa-server-dns`, and `freeipa-server-trust-ad`; pre-configures firewalld with the `freeipa4` and `dns` services; and enables `firewalld` and `ipa.service`.
 3. **`disk_config/`** — TOML configs for `bootc-image-builder` to produce bootable disk images:
    - `disk.toml` — Minimal partition layout (20 GiB minimum)
    - `iso-gnome.toml` / `iso-kde.toml` — Anaconda installer configs for GNOME and KDE desktops
@@ -50,7 +50,23 @@ Images are published to `ghcr.io/<owner>/<repo>:<tag>`. The `artifacthub-repo.ym
 
 ## Customization Points
 
-- Change the base image in `Containerfile` (first `FROM` line)
+- Change the uCore variant in `Containerfile` (e.g. `ucore:stable-zfs` for ZFS support)
 - Add packages/services in `build_files/build.sh`
 - Adjust disk layout in `disk_config/disk.toml`
 - Modify workflow triggers or registry in `.github/workflows/build.yml`
+
+## FreeIPA First-Boot Setup
+
+The image ships FreeIPA packages and enabled services but requires a one-time configuration after deployment:
+
+```bash
+sudo ipa-server-install \
+  --realm=EXAMPLE.COM \
+  --domain=example.com \
+  --ds-password=<dir-manager-password> \
+  --admin-password=<admin-password> \
+  --setup-dns \
+  --unattended
+```
+
+After `ipa-server-install` completes, `ipa.service` will start automatically on future reboots.
