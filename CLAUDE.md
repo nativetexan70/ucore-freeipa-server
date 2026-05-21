@@ -30,7 +30,7 @@ Default environment variables: `image_name="image-template"`, `default_tag="late
 ### Build Pipeline
 
 1. **`Containerfile`** — Defines the container image, using `ghcr.io/ublue-os/ucore:stable` as the base (Fedora CoreOS-based server image). This is where packages and system configurations are layered.
-2. **`build_files/build.sh`** — Shell script that runs *inside* the container during build. Installs `freeipa-server`, `freeipa-server-dns`, and `freeipa-server-trust-ad`; pre-configures firewalld with the `freeipa4` and `dns` services; and enables `firewalld` and `ipa.service`.
+2. **`build_files/build.sh`** — Shell script that runs *inside* the container during build. Installs `freeipa-server` and `freeipa-server-dns`; pre-configures firewalld ports for FreeIPA; and enables `firewalld` and `ipa.service`. Note: `freeipa-server-trust-ad` is intentionally excluded — its Samba post-install scriptlets fail in a container build context.
 3. **`disk_config/`** — TOML configs for `bootc-image-builder` to produce bootable disk images:
    - `disk.toml` — Minimal partition layout (20 GiB minimum)
    - `iso-gnome.toml` / `iso-kde.toml` — Anaconda installer configs for GNOME and KDE desktops
