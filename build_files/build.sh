@@ -11,16 +11,19 @@ dnf5 install -y \
     freeipa-server-trust-ad
 
 ### Configure firewall
-# freeipa4 is not a defined firewalld service on Fedora; use the individual
-# named services that firewalld ships with instead.
-firewall-offline-cmd --add-service=http
-firewall-offline-cmd --add-service=https
-firewall-offline-cmd --add-service=ldap
-firewall-offline-cmd --add-service=ldaps
-firewall-offline-cmd --add-service=kerberos
-firewall-offline-cmd --add-service=kpasswd
-firewall-offline-cmd --add-service=dns
-firewall-offline-cmd --add-service=ntp
+# Use explicit ports instead of service names to avoid dependency on specific
+# firewalld service definition files being present in the base image.
+firewall-offline-cmd --add-port=80/tcp    # HTTP  (web UI, CA)
+firewall-offline-cmd --add-port=443/tcp   # HTTPS (web UI, CA)
+firewall-offline-cmd --add-port=389/tcp   # LDAP
+firewall-offline-cmd --add-port=636/tcp   # LDAPS
+firewall-offline-cmd --add-port=88/tcp    # Kerberos
+firewall-offline-cmd --add-port=88/udp    # Kerberos
+firewall-offline-cmd --add-port=464/tcp   # kpasswd
+firewall-offline-cmd --add-port=464/udp   # kpasswd
+firewall-offline-cmd --add-port=53/tcp    # DNS
+firewall-offline-cmd --add-port=53/udp    # DNS
+firewall-offline-cmd --add-port=123/udp   # NTP
 
 ### Enable services
 systemctl enable firewalld.service
