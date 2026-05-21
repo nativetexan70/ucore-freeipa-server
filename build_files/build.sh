@@ -4,11 +4,12 @@ set -ouex pipefail
 
 ### Install packages
 
-# FreeIPA server with integrated DNS and optional Active Directory trust
+# FreeIPA server with integrated DNS
+# freeipa-server-trust-ad (Samba/AD trust) is omitted: its post-install RPM
+# scriptlets require running services and fail in a container build context.
 dnf5 install -y \
     freeipa-server \
-    freeipa-server-dns \
-    freeipa-server-trust-ad
+    freeipa-server-dns
 
 ### Configure firewall
 # Use explicit ports instead of service names to avoid dependency on specific

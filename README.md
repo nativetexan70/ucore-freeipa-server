@@ -7,7 +7,7 @@ The image is published automatically to GitHub Container Registry on every push 
 ## What's Included
 
 - **Base**: `ghcr.io/ublue-os/ucore:stable` (Fedora CoreOS-based, minimal server image)
-- **FreeIPA packages**: `freeipa-server`, `freeipa-server-dns`, `freeipa-server-trust-ad`
+- **FreeIPA packages**: `freeipa-server`, `freeipa-server-dns`
 - **Firewall**: pre-configured with the `freeipa4` service (Kerberos, LDAP/S, HTTP/S, kpasswd) and `dns` service
 - **Services enabled**: `firewalld`, `ipa` (starts automatically after `ipa-server-install` is run)
 
@@ -54,9 +54,10 @@ kinit admin
 
 ### Adding Active Directory Trust (Optional)
 
-If you need to establish trust with an Active Directory domain, `freeipa-server-trust-ad` is already installed. After FreeIPA is configured:
+If you need trust with an Active Directory domain, install `freeipa-server-trust-ad` after booting into the image and run:
 
 ```bash
+sudo dnf install -y freeipa-server-trust-ad
 sudo ipa-adtrust-install
 ```
 
