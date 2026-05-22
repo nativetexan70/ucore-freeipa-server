@@ -36,5 +36,7 @@ systemctl enable ipa.service
 # Remove file:// gpgkey references so bootc container lint doesn't fail on
 # missing local paths in the final image.
 for f in /etc/yum.repos.d/*.repo /usr/lib/yum.repos.d/*.repo; do
-    [[ -f "$f" ]] && sed -i 's|file://[^ ]*gpgkey[^ ]*||g' "$f"
+    if [[ -f "$f" ]]; then
+        sed -i 's|file://[^ ]*gpgkey[^ ]*||g' "$f"
+    fi
 done
