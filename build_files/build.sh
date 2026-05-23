@@ -32,7 +32,20 @@ systemctl enable firewalld.service
 # run once after first boot to configure the realm before it will successfully start.
 systemctl enable ipa.service
 
-### Clean up repo files
+### Create tmpfiles.d entries for FreeIPA runtime directories
+# In bootc images /var is an empty writable partition on first boot — RPM
+# package files under /var do not carry over from the container build.
+# systemd-tmpfiles-setup.service reads these configs early in boot and
+# creates the directories before ipa-server-install is ever run.
+cat > /usr/lib/tmpfiles.d/freeipa-server-bootc.conf << 'EOF'
+d /var/log/pki          0755 root   root   -
+d /var/log/ipa          0700 root   root   -
+d /var/lib/ipa          0755 root   root   -
+d /var/lib/ipa/backup   0700 root   root   -
+d /var/lib/dirsrv       0700 root   root   -
+EOF
+
+
 # Remove file:// gpgkey references so bootc container lint doesn't fail on
 # missing local paths in the final image.
 for f in /etc/yum.repos.d/*.repo /usr/lib/yum.repos.d/*.repo; do
