@@ -7,9 +7,11 @@ set -ouex pipefail
 # FreeIPA server with integrated DNS
 # freeipa-server-trust-ad (Samba/AD trust) is omitted: its post-install RPM
 # scriptlets require running services and fail in a container build context.
+# checkpolicy is needed to compile the custom SELinux policy module below.
 dnf5 install -y \
     freeipa-server \
-    freeipa-server-dns
+    freeipa-server-dns \
+    checkpolicy
 
 ### Configure firewall
 # Use explicit ports instead of service names to avoid dependency on specific
@@ -53,3 +55,26 @@ for f in /etc/yum.repos.d/*.repo /usr/lib/yum.repos.d/*.repo; do
         sed -i 's|file://[^ ]*gpgkey[^ ]*||g' "$f"
     fi
 done
+
+### Install custom SELinux policy for bootc upgrades
+# FreeIPA installs sssd-passkey-child and related binaries typed sssd_mfa_exec_t.
+# bootc runs as install_t and needs relabelto (plus related file ops) on that
+# type to write ostree content objects during upgrades. Without this, bootc
+# upgrade fails with "fsetxattr(security.selinux): Permission denied" when
+# SELinux is in enforcing mode.
+cat > /tmp/bootc-freeipa-selinux.te << 'EOF'
+module bootc-freeipa-selinux 1.0;
+
+require {
+    type install_t;
+    type sssd_mfa_exec_t;
+    class file { getattr ioctl link open read relabelto rename setattr write };
+}
+
+allow install_t sssd_mfa_exec_t:file { getattr ioctl link open read relabelto rename setattr write };
+EOF
+
+checkmodule -M -m -o /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.te
+semodule_package -o /tmp/bootc-freeipa-selinux.pp -m /tmp/bootc-freeipa-selinux.mod
+semodule -i /tmp/bootc-freeipa-selinux.pp
+rm -f /tmp/bootc-freeipa-selinux.te /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.pp
