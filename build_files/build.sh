@@ -11,7 +11,8 @@ set -ouex pipefail
 dnf5 install -y \
     freeipa-server \
     freeipa-server-dns \
-    checkpolicy
+    checkpolicy \
+    jq
 
 ### Configure firewall
 # Use explicit ports instead of service names to avoid dependency on specific
@@ -78,3 +79,27 @@ checkmodule -M -m -o /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.t
 semodule_package -o /tmp/bootc-freeipa-selinux.pp -m /tmp/bootc-freeipa-selinux.mod
 semodule -i /tmp/bootc-freeipa-selinux.pp
 rm -f /tmp/bootc-freeipa-selinux.te /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.pp
+
+### Configure image signing verification
+# Ships the cosign public key and container policy so bootc upgrade pulls
+# as ostree-image-signed instead of ostree-unverified-registry.
+install -Dm0644 /ctx/cosign.pub \
+    /etc/pki/containers/ghcr.io-nativetexan70-ucore-freeipa-server.pub
+
+# Merge sigstore verification rule into the existing containers policy.
+# jq preserves all other rules already present in the base image policy.
+jq '.transports.docker["ghcr.io/nativetexan70/ucore-freeipa-server"] = [
+  {
+    "type": "sigstoreSigned",
+    "keyPath": "/etc/pki/containers/ghcr.io-nativetexan70-ucore-freeipa-server.pub",
+    "signedIdentity": {"type": "matchRepository"}
+  }
+]' /etc/containers/policy.json > /tmp/policy.json
+mv /tmp/policy.json /etc/containers/policy.json
+
+# Tell the containers runtime to look for sigstore attachments for this image.
+cat > /etc/containers/registries.d/ghcr.io-nativetexan70-ucore-freeipa-server.yaml << 'EOF'
+docker:
+  ghcr.io/nativetexan70/ucore-freeipa-server:
+    use-sigstore-attachments: true
+EOF
