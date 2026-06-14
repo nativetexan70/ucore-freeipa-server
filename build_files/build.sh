@@ -4,102 +4,77 @@ set -ouex pipefail
 
 ### Install packages
 
-# freeipa-client pulls in sssd, krb5-workstation, certmonger, and other
-# required dependencies automatically.
+# FreeIPA server with integrated DNS
+# freeipa-server-trust-ad (Samba/AD trust) is omitted: its post-install RPM
+# scriptlets require running services and fail in a container build context.
+# checkpolicy is needed to compile the custom SELinux policy module below.
 dnf5 install -y \
-    freeipa-client \
-    oddjob \
-    oddjob-mkhomedir
+    freeipa-server \
+    freeipa-server-dns \
+    checkpolicy
 
-### Preserve FreeIPA join state across bootc updates
-#
-# bootc performs a three-way /etc merge on update: it diffs old-image /etc
-# vs new-image /etc and applies that delta to local /etc. Files that
-# ipa-client-install creates and that are NOT shipped in this image are
-# treated as local additions and are never touched by updates.
-#
-# Strategy: create the directory skeleton here so the paths exist at first
-# boot, but deliberately ship NO config file content. ipa-client-install
-# then owns those files entirely, and bootc will never overwrite them.
+### Configure firewall
+# Use explicit ports instead of service names to avoid dependency on specific
+# firewalld service definition files being present in the base image.
+firewall-offline-cmd --add-port=80/tcp    # HTTP  (web UI, CA)
+firewall-offline-cmd --add-port=443/tcp   # HTTPS (web UI, CA)
+firewall-offline-cmd --add-port=389/tcp   # LDAP
+firewall-offline-cmd --add-port=636/tcp   # LDAPS
+firewall-offline-cmd --add-port=88/tcp    # Kerberos
+firewall-offline-cmd --add-port=88/udp    # Kerberos
+firewall-offline-cmd --add-port=464/tcp   # kpasswd
+firewall-offline-cmd --add-port=464/udp   # kpasswd
+firewall-offline-cmd --add-port=53/tcp    # DNS
+firewall-offline-cmd --add-port=53/udp    # DNS
+firewall-offline-cmd --add-port=123/udp   # NTP
 
-install -d -m 0755 /etc/ipa
-install -d -m 0750 /etc/sssd/conf.d
+### Enable services
+systemctl enable firewalld.service
+# ipa.service orchestrates all FreeIPA components; it requires ipa-server-install to be
+# run once after first boot to configure the realm before it will successfully start.
+systemctl enable ipa.service
 
-# Ensure sssd runtime and cache directories survive across updates.
-# These already live under /var which is mutable and preserved by bootc.
-install -d -m 0711 /var/lib/sss/db
-install -d -m 0755 /var/lib/sss/pipes/private
-install -d -m 0755 /var/log/sssd
+### Create tmpfiles.d entries for FreeIPA runtime directories
+# In bootc images /var is an empty writable partition on first boot — RPM
+# package files under /var do not carry over from the container build.
+# systemd-tmpfiles-setup.service reads these configs early in boot and
+# creates the directories before ipa-server-install is ever run.
+cat > /usr/lib/tmpfiles.d/freeipa-server-bootc.conf << 'EOF'
+d /var/log/pki          0755 root   root   -
+d /var/log/ipa          0700 root   root   -
+d /var/lib/ipa          0755 root   root   -
+d /var/lib/ipa/backup   0700 root   root   -
+d /var/lib/dirsrv       0700 root   root   -
+EOF
 
-### Enable required system units
 
-systemctl enable sssd
-systemctl enable oddjobd
-systemctl enable podman.socket
-
-### Fix bootc-image-builder ISO manifest generation compatibility
-#
-# Repos inherited from the Bluefin base image may reference GPG keys via
-# local file:// paths in /etc/pki/rpm-gpg/. BIB's anaconda-iso manifest
-# generation extracts repo configs from the container image and runs dnf
-# dependency resolution inside its own container, which has no access to
-# those key files. Truncate any repo file that carries a local file://
-# gpgkey reference so BIB's manifest generation can proceed without error.
-
-for _repo_dir in /etc/yum.repos.d /usr/lib/yum.repos.d; do
-    [[ -d "$_repo_dir" ]] || continue
-    find "$_repo_dir" -name '*.repo' | while IFS= read -r _repo_file; do
-        grep -ql 'gpgkey=file://' "$_repo_file" 2>/dev/null || continue
-        sed -i \
-            -e '/^gpgkey=file:/d' \
-            -e 's/^gpgcheck=.*/gpgcheck=0/' \
-            -e 's/^repo_gpgcheck=.*/repo_gpgcheck=0/' \
-            "$_repo_file"
-        grep -q '^repo_gpgcheck=' "$_repo_file" || \
-            sed -i '/^\[/a repo_gpgcheck=0' "$_repo_file"
-        grep -q '^gpgcheck=' "$_repo_file" || \
-            sed -i '/^\[/a gpgcheck=0' "$_repo_file"
-    done
+# Remove file:// gpgkey references so bootc container lint doesn't fail on
+# missing local paths in the final image.
+for f in /etc/yum.repos.d/*.repo /usr/lib/yum.repos.d/*.repo; do
+    if [[ -f "$f" ]]; then
+        sed -i 's|file://[^ ]*gpgkey[^ ]*||g' "$f"
+    fi
 done
-unset _repo_dir _repo_file
 
-### Install Homebrew for all users (including FreeIPA domain users)
-#
-# Homebrew is installed to /home/linuxbrew/.linuxbrew (the standard Linux
-# prefix). In a bootc deployment, /home is a symlink to /var/home. The /var
-# tree is seeded from the OCI image on first install and preserved across
-# bootc upgrades, so the brew installation is present from first boot and
-# survives image updates independently.
-#
-# The 'brew' group grants write access to the installation. Local users and
-# FreeIPA domain users added to this group can run 'brew install'. Users not
-# in the group can still run any package that is already installed.
+### Install custom SELinux policy for bootc upgrades
+# FreeIPA installs sssd-passkey-child and related binaries typed sssd_mfa_exec_t.
+# bootc runs as install_t and needs relabelto (plus related file ops) on that
+# type to write ostree content objects during upgrades. Without this, bootc
+# upgrade fails with "fsetxattr(security.selinux): Permission denied" when
+# SELinux is in enforcing mode.
+cat > /tmp/bootc-freeipa-selinux.te << 'EOF'
+module bootc-freeipa-selinux 1.0;
 
-useradd -r -M -d /home/linuxbrew -s /bin/bash linuxbrew
-groupadd -r brew
-usermod -aG brew linuxbrew
+require {
+    type install_t;
+    type sssd_mfa_exec_t;
+    class file { getattr ioctl link open read relabelto rename setattr write };
+}
 
-# /home is a symlink to /var/home in Bluefin; create the real directory
-# since the symlink target does not exist during the container build.
-mkdir -p /var/home/linuxbrew
-chown linuxbrew:linuxbrew /var/home/linuxbrew
-chmod 0755 /var/home/linuxbrew
+allow install_t sssd_mfa_exec_t:file { getattr ioctl link open read relabelto rename setattr write };
+EOF
 
-curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh \
-    -o /tmp/brew-install.sh
-# runuser/su both invoke PAM which fails in a container build environment.
-# setpriv drops to the target UID/GID without PAM and is safe in containers.
-setpriv --reuid=linuxbrew --regid=linuxbrew --init-groups \
-    env HOME=/home/linuxbrew USER=linuxbrew NONINTERACTIVE=1 \
-    bash /tmp/brew-install.sh
-
-chgrp -R brew /home/linuxbrew/.linuxbrew
-chmod -R g+rwX /home/linuxbrew/.linuxbrew
-find /home/linuxbrew/.linuxbrew -type d -exec chmod g+s {} +
-
-cat >/etc/profile.d/brew.sh <<'BREWEOF'
-if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-fi
-BREWEOF
-chmod 644 /etc/profile.d/brew.sh
+checkmodule -M -m -o /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.te
+semodule_package -o /tmp/bootc-freeipa-selinux.pp -m /tmp/bootc-freeipa-selinux.mod
+semodule -i /tmp/bootc-freeipa-selinux.pp
+rm -f /tmp/bootc-freeipa-selinux.te /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.pp
