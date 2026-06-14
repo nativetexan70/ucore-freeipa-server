@@ -3,23 +3,13 @@ FROM scratch AS ctx
 COPY build_files /
 
 # Base Image
-FROM ghcr.io/ublue-os/ucore:stable
+FROM ghcr.io/ublue-os/bluefin:stable
 
 ## Other possible base images:
-# FROM ghcr.io/ublue-os/ucore:stable-zfs    (with ZFS support)
-# FROM ghcr.io/ublue-os/ucore-hci:stable    (hyper-converged infrastructure variant)
+# FROM ghcr.io/ublue-os/bluefin:latest      (latest Fedora Silverblue + GNOME)
+# FROM ghcr.io/ublue-os/bluefin-dx:stable   (developer experience variant)
+# FROM ghcr.io/ublue-os/aurora:stable       (KDE Plasma variant)
 # Universal Blue Images: https://github.com/orgs/ublue-os/packages
-
-### [IM]MUTABLE /opt
-## Some bootable images, like Fedora, have /opt symlinked to /var/opt, in order to
-## make it mutable/writable for users. However, some packages write files to this directory,
-## thus its contents might be wiped out when bootc deploys an image, making it troublesome for
-## some packages. Eg, google-chrome, docker-desktop.
-##
-## Uncomment the following line if one desires to make /opt immutable and be able to be used
-## by the package manager.
-
-# RUN rm /opt && mkdir /opt
 
 ### MODIFICATIONS
 ## make modifications desired in your image and install packages by modifying the build.sh script
@@ -30,7 +20,13 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build.sh
-    
+
+# COPY writes directly to the image layer and is not subject to the bind-mount
+# that the OCI runtime places on /etc/hostname during RUN steps. This ships an
+# empty /etc/hostname so bootc has no upstream value to merge against, preventing
+# it from ever overwriting the locally configured hostname (required for FreeIPA).
+COPY --from=ctx /hostname /etc/hostname
+
 ### LINTING
 ## Verify final image and contents are correct.
 RUN bootc container lint
