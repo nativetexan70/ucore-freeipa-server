@@ -3,11 +3,12 @@ FROM scratch AS ctx
 COPY build_files /
 
 # Base Image
-FROM ghcr.io/ublue-os/ucore:stable
+FROM ghcr.io/ublue-os/bluefin:stable
 
 ## Other possible base images:
-# FROM ghcr.io/ublue-os/ucore:stable-zfs    (with ZFS support)
-# FROM ghcr.io/ublue-os/ucore-hci:stable    (hyper-converged infrastructure variant)
+# FROM ghcr.io/ublue-os/bluefin:latest      (latest Fedora Silverblue + GNOME)
+# FROM ghcr.io/ublue-os/bluefin-dx:stable   (developer experience variant)
+# FROM ghcr.io/ublue-os/aurora:stable       (KDE Plasma variant)
 # Universal Blue Images: https://github.com/orgs/ublue-os/packages
 
 ### [IM]MUTABLE /opt
