@@ -16,7 +16,7 @@ The image is published automatically to GitHub Container Registry on every push 
 From any bootc-compatible system (Fedora Atomic, uCore, etc.):
 
 ```bash
-sudo bootc switch ghcr.io/nativetexan70/ucore-freeipa-server:latest
+sudo bootc switch ghcr.io/personalcyber/ucore-freeipa-server:latest
 sudo systemctl reboot
 ```
 
@@ -113,7 +113,7 @@ Disk images land in `output/` after the build. To optionally upload to an S3 buc
 Images pushed to GHCR are signed with [cosign](https://docs.sigstore.dev/cosign/overview/). To verify a pulled image:
 
 ```bash
-cosign verify --key cosign.pub ghcr.io/nativetexan70/ucore-freeipa-server:latest
+cosign verify --key cosign.pub ghcr.io/personalcyber/ucore-freeipa-server:latest
 ```
 
 To enable signing in a fork, generate a key pair and add the private key as a repository secret:

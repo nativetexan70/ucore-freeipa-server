@@ -1,7 +1,7 @@
 [customizations.installer.kickstart]
 contents = """
 %post
-bootc switch --mutate-in-place --transport registry ghcr.io/nativetexan70/ucore-freeipa-server:latest
+bootc switch --mutate-in-place --transport registry ghcr.io/personalcyber/ucore-freeipa-server:latest
 %end
 """
 
