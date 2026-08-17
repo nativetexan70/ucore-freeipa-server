@@ -77,6 +77,20 @@ EOF
 
 checkmodule -M -m -o /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.te
 semodule_package -o /tmp/bootc-freeipa-selinux.pp -m /tmp/bootc-freeipa-selinux.mod
+
+# Work around a libsemanage/overlayfs bug (see SELinuxProject/selinux#343):
+# semodule commits its transaction by rename(2)'ing .../targeted/tmp onto
+# .../targeted/active. The base image ships an already-populated policy
+# store, so "active" is a mix of files still on the image's read-only lower
+# layer and files copied up to the writable layer during package installs.
+# The kernel can't atomically rename over a directory straddling both
+# layers and fails with "Directory not empty". Forcing a full copy-up of
+# the policy store onto the writable layer first ensures the rename stays
+# within a single layer.
+cp -a /etc/selinux/targeted /etc/selinux/targeted.rebuilt
+rm -rf /etc/selinux/targeted
+mv /etc/selinux/targeted.rebuilt /etc/selinux/targeted
+
 semodule -i /tmp/bootc-freeipa-selinux.pp
 rm -f /tmp/bootc-freeipa-selinux.te /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.pp
 
