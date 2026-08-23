@@ -63,16 +63,25 @@ done
 # type to write ostree content objects during upgrades. Without this, bootc
 # upgrade fails with "fsetxattr(security.selinux): Permission denied" when
 # SELinux is in enforcing mode.
+# The require/allow rule is wrapped in an "optional" block so that a
+# mismatch between this module and the base image's selinux-policy version
+# (e.g. sssd_mfa_exec_t being redefined as an attribute rather than a type)
+# makes semodule silently skip this one rule instead of failing the whole
+# module load with "Failed to resolve typeattributeset statement" /
+# "Failed to resolve AST", which previously broke the entire container
+# build.
 cat > /tmp/bootc-freeipa-selinux.te << 'EOF'
 module bootc-freeipa-selinux 1.0;
 
-require {
-    type install_t;
-    type sssd_mfa_exec_t;
-    class file { getattr ioctl link open read relabelto rename setattr write };
-}
+optional {
+    require {
+        type install_t;
+        type sssd_mfa_exec_t;
+        class file { getattr ioctl link open read relabelto rename setattr write };
+    }
 
-allow install_t sssd_mfa_exec_t:file { getattr ioctl link open read relabelto rename setattr write };
+    allow install_t sssd_mfa_exec_t:file { getattr ioctl link open read relabelto rename setattr write };
+}
 EOF
 
 checkmodule -M -m -o /tmp/bootc-freeipa-selinux.mod /tmp/bootc-freeipa-selinux.te
